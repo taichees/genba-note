@@ -1,0 +1,4 @@
+enum WorkLogFilter {
+  all,
+  unsorted,
+}
