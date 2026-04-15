@@ -49,13 +49,26 @@ lib/
 
 ## 実行手順
 
-Flutter SDK が利用できる環境で次を実行します。
+このリポジトリでは、ローカルに配置した Flutter / Android SDK を使う実行スクリプトを利用できます。
 
 ```bash
-flutter pub get
-flutter analyze
-flutter run -d android
+./scripts/run_android.sh
 ```
+
+このスクリプトは以下をまとめて実行します。
+
+- 実行用コピーを `/tmp/genba-note-run` に同期
+- ASCII パス上の Flutter SDK コピーを準備
+- Android エミュレータを起動
+- `flutter pub get`
+- `flutter analyze`
+- `flutter run -d emulator-5554`
+
+前提として、`.tool/` 配下に以下が準備済みである必要があります。
+
+- `.tool/flutter`
+- `.tool/android-sdk`
+- `.tool/jdk`
 
 ## 現在の状態
 

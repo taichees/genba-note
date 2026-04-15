@@ -7,13 +7,19 @@
 .pub/
 .pub-cache/
 build/
+coverage/
 
 # Android / IDE
 android/.gradle/
 android/local.properties
+android/captures/
+local.properties
 *.iml
 .idea/
 .vscode/
+
+# Local toolchains / runtime copies
+.tool/
 
 # macOS
 .DS_Store

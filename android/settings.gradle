@@ -1,5 +1,10 @@
 pluginManagement {
     def flutterSdkPath = {
+        def envFlutterSdkPath = System.getenv('FLUTTER_SDK')
+        if (envFlutterSdkPath != null && !envFlutterSdkPath.isBlank()) {
+            return envFlutterSdkPath
+        }
+
         def properties = new Properties()
         file('local.properties').withInputStream { properties.load(it) }
         def flutterSdkPath = properties.getProperty('flutter.sdk')
