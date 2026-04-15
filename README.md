@@ -49,10 +49,28 @@ lib/
 
 ## 実行手順
 
-このリポジトリでは、ローカルに配置した Flutter / Android SDK を使う実行スクリプトを利用できます。
+最初にセットアップスクリプトでローカル開発環境を作成します。
+
+```bash
+./scripts/setup_android_tools.sh
+```
+
+その後、実行スクリプトでアプリを起動します。
 
 ```bash
 ./scripts/run_android.sh
+```
+
+画面付きで起動するのがデフォルトです。バックグラウンドの headless 実行にしたい場合だけ、次を使います。
+
+```bash
+HEADLESS=1 ./scripts/run_android.sh
+```
+
+すでに起動中のエミュレータをそのまま再利用したい場合は、次を使います。
+
+```bash
+REUSE_EXISTING_EMULATOR=1 ./scripts/run_android.sh
 ```
 
 このスクリプトは以下をまとめて実行します。
@@ -64,11 +82,12 @@ lib/
 - `flutter analyze`
 - `flutter run -d emulator-5554`
 
-前提として、`.tool/` 配下に以下が準備済みである必要があります。
+セットアップスクリプトは以下を行います。
 
-- `.tool/flutter`
-- `.tool/android-sdk`
-- `.tool/jdk`
+- Flutter SDK を `.tool/flutter` に配置
+- Android SDK を `.tool/android-sdk` に配置
+- JDK を `.tool/jdk` に配置
+- Android Emulator 用の AVD を作成
 
 ## 現在の状態
 

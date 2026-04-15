@@ -11,6 +11,8 @@ JDK_LINK="${JDK_LINK:-/tmp/jdk17}"
 RUN_DIR="${RUN_DIR:-/tmp/genba-note-run}"
 AVD_NAME="${AVD_NAME:-genba_note_api_36}"
 DEVICE_ID="${DEVICE_ID:-emulator-5554}"
+HEADLESS="${HEADLESS:-0}"
+REUSE_EXISTING_EMULATOR="${REUSE_EXISTING_EMULATOR:-0}"
 
 SOURCE_FLUTTER_SDK="$TOOLS_DIR/flutter"
 SOURCE_ANDROID_SDK="$TOOLS_DIR/android-sdk"
@@ -69,18 +71,37 @@ EOF
 }
 
 ensure_emulator() {
+  local emulator_args=(
+    "@$AVD_NAME"
+    -no-audio
+    -no-snapshot
+    -no-boot-anim
+  )
+
+  if [[ "$HEADLESS" == "1" ]]; then
+    emulator_args+=(-no-window)
+  fi
+
   if "$ANDROID_SDK_ROOT/platform-tools/adb" devices | grep -q "$DEVICE_ID"; then
-    log "既存のエミュレータ $DEVICE_ID を利用します"
-    return
+    if [[ "$HEADLESS" == "1" || "$REUSE_EXISTING_EMULATOR" == "1" ]]; then
+      log "既存のエミュレータ $DEVICE_ID を利用します"
+      return
+    fi
+
+    log "既存のエミュレータ $DEVICE_ID を再起動して画面表示を有効にします"
+    "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$DEVICE_ID" emu kill || true
+
+    local retries=30
+    while "$ANDROID_SDK_ROOT/platform-tools/adb" devices | grep -q "$DEVICE_ID"; do
+      ((retries--))
+      [[ "$retries" -gt 0 ]] || fail "既存エミュレータの停止待ちでタイムアウトしました"
+      sleep 1
+    done
   fi
 
   log "エミュレータ $AVD_NAME を起動します"
   nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
-    "@$AVD_NAME" \
-    -no-window \
-    -no-audio \
-    -no-snapshot \
-    -no-boot-anim \
+    "${emulator_args[@]}" \
     > /tmp/"$AVD_NAME".log 2>&1 &
 
   log "Android の起動完了を待っています"
