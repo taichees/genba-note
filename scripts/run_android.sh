@@ -9,10 +9,12 @@ FLUTTER_SDK_REAL="${FLUTTER_SDK_REAL:-/tmp/flutter-sdk-real}"
 ANDROID_SDK_LINK="${ANDROID_SDK_LINK:-/tmp/android-sdk}"
 JDK_LINK="${JDK_LINK:-/tmp/jdk17}"
 RUN_DIR="${RUN_DIR:-/tmp/genba-note-run}"
+ANDROID_AVD_DIR="${ANDROID_AVD_DIR:-$TOOLS_DIR/android-avd}"
 AVD_NAME="${AVD_NAME:-genba_note_api_36}"
 DEVICE_ID="${DEVICE_ID:-emulator-5554}"
 HEADLESS="${HEADLESS:-0}"
 REUSE_EXISTING_EMULATOR="${REUSE_EXISTING_EMULATOR:-0}"
+EMULATOR_BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-180}"
 
 SOURCE_FLUTTER_SDK="$TOOLS_DIR/flutter"
 SOURCE_ANDROID_SDK="$TOOLS_DIR/android-sdk"
@@ -48,11 +50,13 @@ ensure_tools() {
   export FLUTTER_SDK="$FLUTTER_SDK_REAL"
   export ANDROID_SDK_ROOT="$ANDROID_SDK_LINK"
   export JAVA_HOME="$JDK_LINK/Contents/Home"
+  export ANDROID_AVD_HOME="$ANDROID_AVD_DIR"
 
   mkdir -p "$RUN_DIR"
   rsync -a --delete "$SOURCE_FLUTTER_SDK/" "$FLUTTER_SDK_REAL/"
   ln -sfn "$SOURCE_ANDROID_SDK" "$ANDROID_SDK_LINK"
   ln -sfn "${JDK_HOME%/Contents/Home}" "$JDK_LINK"
+  mkdir -p "$ANDROID_AVD_HOME"
 }
 
 sync_project() {
@@ -100,14 +104,30 @@ ensure_emulator() {
   fi
 
   log "エミュレータ $AVD_NAME を起動します"
-  nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
+  nohup env ANDROID_AVD_HOME="$ANDROID_AVD_HOME" \
+    "$ANDROID_SDK_ROOT/emulator/emulator" \
     "${emulator_args[@]}" \
     > /tmp/"$AVD_NAME".log 2>&1 &
 
   log "Android の起動完了を待っています"
-  "$ANDROID_SDK_ROOT/platform-tools/adb" wait-for-device
-  until [[ "$("$ANDROID_SDK_ROOT/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do
+  local waited=0
+  until "$ANDROID_SDK_ROOT/platform-tools/adb" devices | grep -q "$DEVICE_ID"; do
+    sleep 1
+    ((waited++))
+    if [[ "$waited" -ge "$EMULATOR_BOOT_TIMEOUT" ]]; then
+      tail -n 80 /tmp/"$AVD_NAME".log >&2 || true
+      fail "エミュレータが adb に接続されませんでした"
+    fi
+  done
+
+  waited=0
+  until [[ "$("$ANDROID_SDK_ROOT/platform-tools/adb" -s "$DEVICE_ID" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do
     sleep 2
+    ((waited+=2))
+    if [[ "$waited" -ge "$EMULATOR_BOOT_TIMEOUT" ]]; then
+      tail -n 80 /tmp/"$AVD_NAME".log >&2 || true
+      fail "エミュレータの起動完了待ちでタイムアウトしました"
+    fi
   done
 }
 

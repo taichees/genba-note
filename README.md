@@ -73,6 +73,8 @@ HEADLESS=1 ./scripts/run_android.sh
 REUSE_EXISTING_EMULATOR=1 ./scripts/run_android.sh
 ```
 
+エミュレータ起動で詰まる場合は、AVD を `.tool/android-avd` から読み込む前提です。起動失敗時は `/tmp/genba_note_api_36.log` に直近ログが出ます。
+
 このスクリプトは以下をまとめて実行します。
 
 - 実行用コピーを `/tmp/genba-note-run` に同期
