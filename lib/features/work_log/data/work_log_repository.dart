@@ -13,12 +13,15 @@ class WorkLogRepository {
 
   Future<List<WorkLogListItem>> fetchWorkLogs(WorkLogFilter filter) async {
     final db = await _database;
-    final whereClause = filter == WorkLogFilter.unsorted ? "WHERE wl.status = 'unsorted'" : '';
+    final whereClause =
+        filter == WorkLogFilter.unsorted ? "WHERE wl.status = 'unsorted'" : '';
     final rows = await db.rawQuery('''
       SELECT
         wl.id,
         wl.datetime,
         wl.status,
+        wl.latitude,
+        wl.longitude,
         wl.property_id,
         wl.client_id,
         p.name AS property_name,

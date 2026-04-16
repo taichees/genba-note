@@ -30,6 +30,9 @@ class _HomePageState extends ConsumerState<HomePage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(workLogActionsProvider).prepareLocationPermission();
+    });
   }
 
   @override
@@ -93,7 +96,13 @@ class _HomePageState extends ConsumerState<HomePage>
                   icon: const Icon(Icons.done_all),
                 ),
               ]
-            : null,
+            : <Widget>[
+                IconButton(
+                  tooltip: '地図を見る',
+                  onPressed: () => context.push('/map'),
+                  icon: const Icon(Icons.map_outlined),
+                ),
+              ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const <Tab>[

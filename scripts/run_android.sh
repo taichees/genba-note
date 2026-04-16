@@ -14,7 +14,10 @@ AVD_NAME="${AVD_NAME:-genba_note_api_36}"
 DEVICE_ID="${DEVICE_ID:-emulator-5554}"
 HEADLESS="${HEADLESS:-0}"
 REUSE_EXISTING_EMULATOR="${REUSE_EXISTING_EMULATOR:-0}"
+FORCE_EMULATOR_RESTART="${FORCE_EMULATOR_RESTART:-0}"
 EMULATOR_BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-180}"
+AUTO_SIMULATE_LOCATION="${AUTO_SIMULATE_LOCATION:-1}"
+SIMULATOR_PID_FILE="${SIMULATOR_PID_FILE:-/tmp/genba-note-location-simulator.pid}"
 
 SOURCE_FLUTTER_SDK="$TOOLS_DIR/flutter"
 SOURCE_ANDROID_SDK="$TOOLS_DIR/android-sdk"
@@ -37,6 +40,37 @@ require_dir() {
 
 find_jdk_home() {
   find "$SOURCE_JDK_ROOT" -path '*/Contents/Home' -type d | head -n 1
+}
+
+emulator_is_headless() {
+  local command_lines
+  command_lines="$(pgrep -af "emulator.*@$AVD_NAME" || true)"
+  [[ -n "$command_lines" ]] && grep -q -- "-no-window" <<<"$command_lines"
+}
+
+cleanup_simulator_pid_file() {
+  if [[ -f "$SIMULATOR_PID_FILE" ]]; then
+    local existing_pid
+    existing_pid="$(cat "$SIMULATOR_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$existing_pid" ]] && ! kill -0 "$existing_pid" 2>/dev/null; then
+      rm -f "$SIMULATOR_PID_FILE"
+    fi
+  fi
+}
+
+stop_location_simulator() {
+  cleanup_simulator_pid_file
+
+  if [[ ! -f "$SIMULATOR_PID_FILE" ]]; then
+    return
+  fi
+
+  local existing_pid
+  existing_pid="$(cat "$SIMULATOR_PID_FILE" 2>/dev/null || true)"
+  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    kill "$existing_pid" 2>/dev/null || true
+  fi
+  rm -f "$SIMULATOR_PID_FILE"
 }
 
 ensure_tools() {
@@ -75,6 +109,8 @@ EOF
 }
 
 ensure_emulator() {
+  cleanup_simulator_pid_file
+
   local emulator_args=(
     "@$AVD_NAME"
     -no-audio
@@ -87,12 +123,19 @@ ensure_emulator() {
   fi
 
   if "$ANDROID_SDK_ROOT/platform-tools/adb" devices | grep -q "$DEVICE_ID"; then
-    if [[ "$HEADLESS" == "1" || "$REUSE_EXISTING_EMULATOR" == "1" ]]; then
+    if [[ "$FORCE_EMULATOR_RESTART" == "1" ]]; then
+      log "既存のエミュレータ $DEVICE_ID を再起動して最新状態に合わせます"
+    elif [[ "$HEADLESS" == "1" || "$REUSE_EXISTING_EMULATOR" == "1" ]]; then
+      log "既存のエミュレータ $DEVICE_ID を利用します"
+      return
+    elif [[ "$HEADLESS" != "1" ]] && emulator_is_headless; then
+      log "既存のエミュレータ $DEVICE_ID は headless 起動中のため再起動します"
+    else
       log "既存のエミュレータ $DEVICE_ID を利用します"
       return
     fi
 
-    log "既存のエミュレータ $DEVICE_ID を再起動して画面表示を有効にします"
+    stop_location_simulator
     "$ANDROID_SDK_ROOT/platform-tools/adb" -s "$DEVICE_ID" emu kill || true
 
     local retries=30
@@ -131,6 +174,31 @@ ensure_emulator() {
   done
 }
 
+ensure_location_simulator() {
+  if [[ "$AUTO_SIMULATE_LOCATION" != "1" ]]; then
+    cleanup_simulator_pid_file
+    return
+  fi
+
+  cleanup_simulator_pid_file
+
+  if [[ -f "$SIMULATOR_PID_FILE" ]]; then
+    local existing_pid
+    existing_pid="$(cat "$SIMULATOR_PID_FILE")"
+    if kill -0 "$existing_pid" 2>/dev/null; then
+      log "位置シミュレータは起動済みです (pid=$existing_pid)"
+      return
+    fi
+    rm -f "$SIMULATOR_PID_FILE"
+  fi
+
+  log "位置シミュレータを起動します"
+  nohup env DEVICE_ID="$DEVICE_ID" \
+    "$ROOT_DIR/scripts/simulate_location.sh" \
+    > /tmp/genba-note-location-simulator.log 2>&1 &
+  echo $! > "$SIMULATOR_PID_FILE"
+}
+
 run_app() {
   log "依存関係を取得しています"
   (
@@ -152,9 +220,11 @@ run_app() {
 }
 
 main() {
+  trap cleanup_simulator_pid_file EXIT
   ensure_tools
   sync_project
   ensure_emulator
+  ensure_location_simulator
   run_app
 }
 

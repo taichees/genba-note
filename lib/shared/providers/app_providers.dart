@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/db/app_database.dart';
@@ -40,10 +41,18 @@ final selectedWorkLogIdsProvider = StateProvider<Set<int>>(
   (ref) => <int>{},
 );
 
-final workLogListProvider = FutureProvider<List<WorkLogListItem>>((ref) async {
-  final filter = ref.watch(workLogFilterProvider);
+final workLogListByFilterProvider =
+    FutureProvider.family<List<WorkLogListItem>, WorkLogFilter>((
+  ref,
+  filter,
+) async {
   final repository = ref.watch(workLogRepositoryProvider);
   return repository.fetchWorkLogs(filter);
+});
+
+final workLogListProvider = FutureProvider<List<WorkLogListItem>>((ref) async {
+  final filter = ref.watch(workLogFilterProvider);
+  return ref.watch(workLogListByFilterProvider(filter).future);
 });
 
 final workLogDetailProvider = FutureProvider.family<WorkLogDetail?, int>((
@@ -66,6 +75,16 @@ final workLogActionsProvider = Provider<WorkLogActions>((ref) {
   return WorkLogActions(ref);
 });
 
+final mapInitialCenterProvider = FutureProvider<LatLng>((ref) async {
+  final position = await ref
+      .read(locationServiceProvider)
+      .tryGetCurrentPosition();
+  if (position != null) {
+    return LatLng(position.latitude, position.longitude);
+  }
+  return const LatLng(35.6809591, 139.7673068);
+});
+
 class WorkLogActions {
   WorkLogActions(this._ref);
 
@@ -73,6 +92,14 @@ class WorkLogActions {
 
   WorkLogRepository get _workLogs => _ref.read(workLogRepositoryProvider);
   MasterRepository get _masters => _ref.read(masterRepositoryProvider);
+
+  Future<void> prepareLocationPermission() async {
+    try {
+      await _ref.read(locationServiceProvider).requestPermissionIfNeeded();
+    } catch (_) {
+      // 権限取得に失敗してもアプリ自体は継続する
+    }
+  }
 
   Future<void> quickRecord() async {
     final workLogId = await _workLogs.quickRecord();
@@ -140,19 +167,25 @@ class WorkLogActions {
 
   Future<void> _updateLocationInBackground(int workLogId) async {
     try {
-      final position = await _ref
-          .read(locationServiceProvider)
-          .tryGetCurrentPosition();
-      if (position == null) {
-        return;
+      final locationService = _ref.read(locationServiceProvider);
+
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final position = await locationService.tryGetFreshPosition();
+        if (position != null) {
+          await _workLogs.updateLocation(
+            workLogId: workLogId,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+          _invalidateLists();
+          _ref.invalidate(workLogDetailProvider(workLogId));
+          return;
+        }
+
+        if (attempt < 2) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
       }
-      await _workLogs.updateLocation(
-        workLogId: workLogId,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      _invalidateLists();
-      _ref.invalidate(workLogDetailProvider(workLogId));
     } catch (_) {
       // GPS が取れなくても記録は失敗させない
     }
@@ -160,5 +193,6 @@ class WorkLogActions {
 
   void _invalidateLists() {
     _ref.invalidate(workLogListProvider);
+    _ref.invalidate(workLogListByFilterProvider);
   }
 }
