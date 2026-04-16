@@ -5,7 +5,7 @@ class AppDatabase {
   AppDatabase();
 
   static const _databaseName = 'genba_note.db';
-  static const _databaseVersion = 2;
+  static const _databaseVersion = 3;
 
   Database? _database;
 
@@ -43,6 +43,11 @@ class AppDatabase {
       await db.execute('DROP TABLE IF EXISTS properties');
       await db.execute('DROP TABLE IF EXISTS clients');
       await _createSchema(db);
+      return;
+    }
+
+    if (oldVersion < 3) {
+      await _createAppSettingsTable(db);
     }
   }
 
@@ -75,6 +80,17 @@ class AppDatabase {
         status TEXT NOT NULL,
         FOREIGN KEY (property_id) REFERENCES properties (id) ON DELETE SET NULL,
         FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE SET NULL
+      )
+    ''');
+
+    await _createAppSettingsTable(db);
+  }
+
+  Future<void> _createAppSettingsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       )
     ''');
   }

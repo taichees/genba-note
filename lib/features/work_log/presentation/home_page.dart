@@ -8,6 +8,7 @@ import '../../../core/utils/date_time_label.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../master/domain/client.dart';
 import '../../master/domain/property.dart';
+import '../../monetize/presentation/premium_bottom_sheets.dart';
 import '../domain/work_log_filter.dart';
 import '../domain/work_log_status.dart';
 import 'widgets/master_picker_bottom_sheet.dart';
@@ -24,6 +25,7 @@ class _HomePageState extends ConsumerState<HomePage>
   late final TabController _tabController;
   bool _isRecording = false;
   bool _isApplyingBulk = false;
+  bool _didShowPcPromo = false;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _tabController.addListener(_handleTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(workLogActionsProvider).prepareLocationPermission();
+      _checkUsagePrompts();
     });
   }
 
@@ -58,11 +61,13 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     final listState = ref.watch(workLogListProvider);
+    final usageSummary = ref.watch(usageSummaryProvider).valueOrNull;
     final selectedIds = ref.watch(selectedWorkLogIdsProvider);
     final clients = ref.watch(clientsProvider).valueOrNull ?? const <Client>[];
     final properties =
         ref.watch(propertiesProvider).valueOrNull ?? const <Property>[];
     final selectionMode = _tabController.index == 1 && selectedIds.isNotEmpty;
+    final isPremium = usageSummary?.isPremium ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -97,6 +102,18 @@ class _HomePageState extends ConsumerState<HomePage>
                 ),
               ]
             : <Widget>[
+                IconButton(
+                  tooltip: '引き継ぎ',
+                  onPressed: () => _showCloudPromo(context),
+                  icon: const Icon(Icons.cloud_outlined),
+                ),
+                IconButton(
+                  tooltip: isPremium ? 'プレミアム利用中' : '有料プラン',
+                  onPressed: () => _showPremiumOffer(context),
+                  icon: Icon(
+                    isPremium ? Icons.workspace_premium : Icons.workspace_premium_outlined,
+                  ),
+                ),
                 IconButton(
                   tooltip: '地図を見る',
                   onPressed: () => context.push('/map'),
@@ -150,6 +167,23 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
+  Future<void> _checkUsagePrompts() async {
+    if (!mounted || _didShowPcPromo) {
+      return;
+    }
+
+    final usage = await ref.read(usageSummaryProvider.future);
+    if (!mounted || !usage.shouldSuggestPc) {
+      return;
+    }
+
+    _didShowPcPromo = true;
+    final wantsPremium = await showPcPromoSheet(context);
+    if (wantsPremium == true && mounted) {
+      await _showPremiumOffer(context);
+    }
+  }
+
   void _toggleSelection(int id) {
     final current = ref.read(selectedWorkLogIdsProvider);
     final next = <int>{...current};
@@ -163,7 +197,15 @@ class _HomePageState extends ConsumerState<HomePage>
 
   Future<void> _quickRecord(BuildContext context) async {
     setState(() => _isRecording = true);
-    await ref.read(workLogActionsProvider).quickRecord();
+    final workLogId = await ref.read(workLogActionsProvider).quickRecord();
+    if (workLogId == null) {
+      if (!context.mounted) {
+        return;
+      }
+      await _showRecordLimitPrompt(context);
+      setState(() => _isRecording = false);
+      return;
+    }
     await HapticFeedback.lightImpact();
     if (!context.mounted) {
       return;
@@ -177,6 +219,55 @@ class _HomePageState extends ConsumerState<HomePage>
         ),
       );
     setState(() => _isRecording = false);
+    _checkUsagePrompts();
+  }
+
+  Future<void> _showRecordLimitPrompt(BuildContext context) async {
+    final action = await showRecordLimitSheet(context);
+    if (!context.mounted || action == null) {
+      return;
+    }
+
+    if (action == 'delete') {
+      final deletedCount = await ref
+          .read(workLogActionsProvider)
+          .deleteOldestWorkLogs();
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('$deletedCount件の古い記録を削除しました')),
+        );
+      return;
+    }
+
+    await _showPremiumOffer(context);
+  }
+
+  Future<void> _showPremiumOffer(BuildContext context) async {
+    final shouldUpgrade = await showPremiumOfferSheet(context);
+    if (shouldUpgrade != true || !context.mounted) {
+      return;
+    }
+
+    await ref.read(workLogActionsProvider).enablePremium();
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('プレミアムを有効にしました')),
+      );
+  }
+
+  Future<void> _showCloudPromo(BuildContext context) async {
+    final wantsPremium = await showCloudPromoSheet(context);
+    if (wantsPremium == true && context.mounted) {
+      await _showPremiumOffer(context);
+    }
   }
 
   Future<void> _applyClientBulk(

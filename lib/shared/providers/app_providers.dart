@@ -8,6 +8,8 @@ import '../../core/db/app_database.dart';
 import '../../features/master/data/master_repository.dart';
 import '../../features/master/domain/client.dart';
 import '../../features/master/domain/property.dart';
+import '../../features/monetize/data/subscription_repository.dart';
+import '../../features/monetize/domain/usage_summary.dart';
 import '../../features/work_log/data/location_service.dart';
 import '../../features/work_log/data/work_log_repository.dart';
 import '../../features/work_log/domain/work_log_detail.dart';
@@ -27,6 +29,10 @@ final workLogRepositoryProvider = Provider<WorkLogRepository>((ref) {
 
 final masterRepositoryProvider = Provider<MasterRepository>((ref) {
   return MasterRepository(ref.watch(databaseConnectionProvider.future));
+});
+
+final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
+  return SubscriptionRepository(ref.watch(databaseConnectionProvider.future));
 });
 
 final locationServiceProvider = Provider<LocationService>((ref) {
@@ -71,6 +77,25 @@ final propertiesProvider = FutureProvider<List<Property>>((ref) async {
   return ref.watch(masterRepositoryProvider).fetchProperties();
 });
 
+final isPremiumProvider = FutureProvider<bool>((ref) async {
+  return ref.watch(subscriptionRepositoryProvider).fetchIsPremium();
+});
+
+final usageSummaryProvider = FutureProvider<UsageSummary>((ref) async {
+  final workLogs = ref.watch(workLogRepositoryProvider);
+  final subscription = ref.watch(subscriptionRepositoryProvider);
+
+  final totalCount = await workLogs.countAll();
+  final unsortedCount = await workLogs.countByStatus(WorkLogStatus.unsorted);
+  final isPremium = await subscription.fetchIsPremium();
+
+  return UsageSummary(
+    totalCount: totalCount,
+    unsortedCount: unsortedCount,
+    isPremium: isPremium,
+  );
+});
+
 final workLogActionsProvider = Provider<WorkLogActions>((ref) {
   return WorkLogActions(ref);
 });
@@ -92,6 +117,8 @@ class WorkLogActions {
 
   WorkLogRepository get _workLogs => _ref.read(workLogRepositoryProvider);
   MasterRepository get _masters => _ref.read(masterRepositoryProvider);
+  SubscriptionRepository get _subscription =>
+      _ref.read(subscriptionRepositoryProvider);
 
   Future<void> prepareLocationPermission() async {
     try {
@@ -101,11 +128,17 @@ class WorkLogActions {
     }
   }
 
-  Future<void> quickRecord() async {
+  Future<int?> quickRecord() async {
+    final usage = await _ref.read(usageSummaryProvider.future);
+    if (usage.reachedFreeLimit) {
+      return null;
+    }
+
     final workLogId = await _workLogs.quickRecord();
     _invalidateLists();
 
     unawaited(_updateLocationInBackground(workLogId));
+    return workLogId;
   }
 
   Future<void> saveWorkLog({
@@ -165,6 +198,19 @@ class WorkLogActions {
     _invalidateLists();
   }
 
+  Future<void> enablePremium() async {
+    await _subscription.setIsPremium(true);
+    _ref.invalidate(isPremiumProvider);
+    _ref.invalidate(usageSummaryProvider);
+  }
+
+  Future<int> deleteOldestWorkLogs({int count = 10}) async {
+    final deletedCount = await _workLogs.deleteOldest(count: count);
+    _invalidateLists();
+    _ref.invalidate(usageSummaryProvider);
+    return deletedCount;
+  }
+
   Future<void> _updateLocationInBackground(int workLogId) async {
     try {
       final locationService = _ref.read(locationServiceProvider);
@@ -194,5 +240,6 @@ class WorkLogActions {
   void _invalidateLists() {
     _ref.invalidate(workLogListProvider);
     _ref.invalidate(workLogListByFilterProvider);
+    _ref.invalidate(usageSummaryProvider);
   }
 }

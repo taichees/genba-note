@@ -69,6 +69,41 @@ class WorkLogRepository {
     });
   }
 
+  Future<int> countAll() async {
+    final db = await _database;
+    final result = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM work_logs'),
+    );
+    return result ?? 0;
+  }
+
+  Future<int> countByStatus(WorkLogStatus status) async {
+    final db = await _database;
+    final result = Sqflite.firstIntValue(
+      await db.rawQuery(
+        'SELECT COUNT(*) FROM work_logs WHERE status = ?',
+        <Object?>[status.value],
+      ),
+    );
+    return result ?? 0;
+  }
+
+  Future<int> deleteOldest({int count = 10}) async {
+    final db = await _database;
+    return db.delete(
+      'work_logs',
+      where: '''
+        id IN (
+          SELECT id
+          FROM work_logs
+          ORDER BY datetime ASC, id ASC
+          LIMIT ?
+        )
+      ''',
+      whereArgs: <Object?>[count],
+    );
+  }
+
   Future<void> updateLocation({
     required int workLogId,
     double? latitude,
