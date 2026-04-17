@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/date_time_label.dart';
+import '../../../core/utils/system_channels.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../master/domain/client.dart';
 import '../../master/domain/property.dart';
@@ -21,7 +22,7 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
   bool _isRecording = false;
   bool _isApplyingBulk = false;
@@ -30,20 +31,32 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(workLogActionsProvider).prepareLocationPermission();
+      AppSystemChannels.requestNotificationPermissionIfNeeded();
       _checkUsagePrompts();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController
       ..removeListener(_handleTabChanged)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    _refreshHomeData();
   }
 
   void _handleTabChanged() {
@@ -182,6 +195,13 @@ class _HomePageState extends ConsumerState<HomePage>
     if (wantsPremium == true && mounted) {
       await _showPremiumOffer(context);
     }
+  }
+
+  void _refreshHomeData() {
+    ref.invalidate(workLogListProvider);
+    ref.invalidate(workLogListByFilterProvider(WorkLogFilter.all));
+    ref.invalidate(workLogListByFilterProvider(WorkLogFilter.unsorted));
+    ref.invalidate(usageSummaryProvider);
   }
 
   void _toggleSelection(int id) {

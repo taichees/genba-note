@@ -204,15 +204,27 @@ class _WorkLogDetailPageState extends ConsumerState<WorkLogDetailPage> {
   }
 
   String _addressLabel(WorkLogDetail detail) {
+    final hasCoordinates =
+        detail.workLog.latitude != null && detail.workLog.longitude != null;
+
     switch (detail.workLog.roughAddressStatus) {
       case RoughAddressStatus.success:
         return '位置: ${detail.workLog.roughAddress ?? '-'}';
       case RoughAddressStatus.pending:
-        return '位置: 住所取得中';
+        if (hasCoordinates) {
+          return '位置: 座標取得済み・住所取得中';
+        }
+        return '位置: 位置情報取得中';
       case RoughAddressStatus.failed:
-        return '位置: 住所未取得';
+        if (hasCoordinates) {
+          return '位置: 座標取得済み・住所未取得';
+        }
+        return '位置: 位置情報の取得に失敗しました';
       case RoughAddressStatus.none:
-        return '位置: -';
+        if (hasCoordinates) {
+          return '位置: 座標取得済み';
+        }
+        return '位置: まだ取得していません';
     }
   }
 

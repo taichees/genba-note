@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_record">記録</string>
+    <string name="widget_description">現場ノートのクイック記録ウィジェット</string>
+    <string name="widget_record_saved">記録しました</string>
+    <string name="widget_record_started">記録を開始しました</string>
+    <string name="widget_free_limit_reached">無料プランは50件までです</string>
+    <string name="widget_record_failed">記録に失敗しました</string>
+    <string name="widget_notification_title">現場ノート</string>
+    <string name="widget_notification_started">記録を開始しました</string>
+    <string name="widget_notification_completed">記録が完了しました</string>
+    <string name="widget_notification_completed_without_location">記録が完了しました（位置情報なし）</string>
+    <string name="widget_notification_channel_name">クイック記録</string>
+    <string name="widget_notification_channel_description">ウィジェットからの記録結果を表示します</string>
+</resources>

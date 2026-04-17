@@ -31,7 +31,7 @@ class WorkLog {
   factory WorkLog.fromMap(Map<String, Object?> map) {
     return WorkLog(
       id: map['id'] as int,
-      datetime: DateTime.parse(map['datetime'] as String),
+      datetime: DateTime.parse(map['datetime'] as String).toLocal(),
       latitude: map['latitude'] as double?,
       longitude: map['longitude'] as double?,
       roughAddress: map['rough_address'] as String?,
@@ -40,7 +40,9 @@ class WorkLog {
       ),
       roughAddressUpdatedAt: map['rough_address_updated_at'] == null
           ? null
-          : DateTime.parse(map['rough_address_updated_at'] as String),
+          : DateTime.parse(
+              map['rough_address_updated_at'] as String,
+            ).toLocal(),
       propertyId: map['property_id'] as int?,
       clientId: map['client_id'] as int?,
       memo: map['memo'] as String?,

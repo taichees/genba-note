@@ -26,7 +26,7 @@ class WorkLogListItem {
   factory WorkLogListItem.fromMap(Map<String, Object?> map) {
     return WorkLogListItem(
       id: map['id'] as int,
-      datetime: DateTime.parse(map['datetime'] as String),
+      datetime: DateTime.parse(map['datetime'] as String).toLocal(),
       status: WorkLogStatus.fromValue(map['status'] as String),
       latitude: map['latitude'] as double?,
       longitude: map['longitude'] as double?,

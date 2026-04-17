@@ -85,7 +85,7 @@ AUTO_SIMULATE_LOCATION=0 ./scripts/run_android.sh
 ./scripts/simulate_location.sh
 ```
 
-デフォルトでは東京駅付近を中心に、半径 10km 以内を 10 秒ごとにランダム移動します。
+デフォルトでは東京駅付近を中心に、半径 10km 以内を 1 分ごとにランダム移動します。
 
 画面付きで起動するのがデフォルトです。バックグラウンドの headless 実行にしたい場合だけ、次を使います。
 
@@ -124,6 +124,22 @@ FORCE_EMULATOR_RESTART=1 ./scripts/run_android.sh
 - 起動中エミュレータへ `adb install -r`
 - アプリを前面起動
 
+Android ホーム画面ウィジェットは、ホーム画面のウィジェット一覧から「現場ノート」を追加すると使えます。最小サイズの「記録」ウィジェットをタップすると、アプリを開かずに未整理レコードを 1 件保存します。
+
+エミュレータでタップ相当を確認したい場合は、次の broadcast でもテストできます。
+
+```bash
+./.tool/android-sdk/platform-tools/adb -s emulator-5554 shell am broadcast \
+  -a jp.genbanote.app.action.QUICK_RECORD \
+  -n jp.genbanote.app/.GenbaNoteWidgetProvider
+```
+
+DB を空にして検証したい場合は、アプリ停止や DB ファイル削除ではなく次のスクリプトを使ってください。ホーム画面ウィジェットの表示が崩れにくくなります。
+
+```bash
+./scripts/clear_db.sh
+```
+
 セットアップスクリプトは以下を行います。
 
 - Flutter SDK を `.tool/flutter` に配置
@@ -140,6 +156,7 @@ FORCE_EMULATOR_RESTART=1 ./scripts/run_android.sh
 - 地図画面で GPS 付き履歴をピン表示
 - 地図と Bottom Sheet 一覧が連動し、詳細編集へ遷移可能
 - 記録後に逆ジオコーディングで大体の住所を非同期補完し、詳細画面に表示
+- Android ホーム画面ウィジェットから未整理レコードを 1 タップで保存可能
 - 無料プランは作業履歴 50 件まで
 - 上限到達時、未整理 20 件以上、機種変更導線で課金モーダルを表示
 - 課金処理はモックで、プレミアム有効化フラグを SQLite に保存

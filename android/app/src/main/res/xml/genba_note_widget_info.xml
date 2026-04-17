@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/genba_note_widget"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:previewImage="@android:drawable/sym_def_app_icon"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />
