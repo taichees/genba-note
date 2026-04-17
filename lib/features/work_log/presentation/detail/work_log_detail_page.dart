@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/utils/date_time_label.dart';
 import '../../../../shared/providers/app_providers.dart';
 import '../../../master/domain/client.dart';
 import '../../../master/domain/property.dart';
+import '../../domain/rough_address_status.dart';
+import '../../domain/work_log_detail.dart';
 import '../../domain/work_log_status.dart';
 import '../widgets/master_picker_bottom_sheet.dart';
 
@@ -65,6 +68,22 @@ class _WorkLogDetailPageState extends ConsumerState<WorkLogDetailPage> {
                   leading: const Icon(Icons.schedule),
                   title: const Text('作業日時'),
                   subtitle: Text(detail.workLog.datetime.toShortLabel()),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.place_outlined),
+                  title: const Text('位置'),
+                  subtitle: Text(_addressLabel(detail)),
+                  trailing: detail.workLog.latitude != null &&
+                          detail.workLog.longitude != null
+                      ? const Icon(Icons.chevron_right)
+                      : null,
+                  onTap: detail.workLog.latitude != null &&
+                          detail.workLog.longitude != null
+                      ? () => context.push('/map?workLogId=${detail.workLog.id}')
+                      : null,
                 ),
               ),
               const SizedBox(height: 12),
@@ -182,6 +201,19 @@ class _WorkLogDetailPageState extends ConsumerState<WorkLogDetailPage> {
       }
     }
     return client?.name ?? AppStrings.unassigned;
+  }
+
+  String _addressLabel(WorkLogDetail detail) {
+    switch (detail.workLog.roughAddressStatus) {
+      case RoughAddressStatus.success:
+        return '位置: ${detail.workLog.roughAddress ?? '-'}';
+      case RoughAddressStatus.pending:
+        return '位置: 住所取得中';
+      case RoughAddressStatus.failed:
+        return '位置: 住所未取得';
+      case RoughAddressStatus.none:
+        return '位置: -';
+    }
   }
 
   Future<void> _save({required int workLogId}) async {

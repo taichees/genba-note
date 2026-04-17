@@ -5,7 +5,7 @@ class AppDatabase {
   AppDatabase();
 
   static const _databaseName = 'genba_note.db';
-  static const _databaseVersion = 3;
+  static const _databaseVersion = 4;
 
   Database? _database;
 
@@ -49,6 +49,18 @@ class AppDatabase {
     if (oldVersion < 3) {
       await _createAppSettingsTable(db);
     }
+
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE work_logs ADD COLUMN rough_address TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE work_logs ADD COLUMN rough_address_status TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE work_logs ADD COLUMN rough_address_updated_at TEXT',
+      );
+    }
   }
 
   Future<void> _createSchema(Database db) async {
@@ -74,6 +86,9 @@ class AppDatabase {
         datetime TEXT NOT NULL,
         latitude REAL,
         longitude REAL,
+        rough_address TEXT,
+        rough_address_status TEXT,
+        rough_address_updated_at TEXT,
         property_id INTEGER,
         client_id INTEGER,
         memo TEXT,

@@ -1,0 +1,211 @@
+# Step6: 住所補完（逆ジオコーディング）機能の実装
+
+## 目的
+
+作業履歴の詳細画面に「大体の住所（市区町村＋町名）」を表示する。
+
+GPSで取得した緯度経度から住所を補完するが、記録の高速性を優先し、保存後に非同期で処理する。
+
+---
+
+## 要件
+
+### ■ 機能概要
+
+* 緯度経度から「大体の住所」を取得する
+* 番地・建物名は含めない
+* 詳細画面で住所を表示する
+
+---
+
+### ■ 表示ルール
+
+* success：`位置: {市区町村 + 町名}付近`
+* pending：`位置: 住所取得中`
+* failed：`位置: 住所未取得`
+
+---
+
+### ■ 非同期処理
+
+* クイック記録保存後に住所取得を実行
+* 保存処理は絶対にブロックしない
+* 住所取得はバックグラウンドで行う
+
+---
+
+## 使用ライブラリ
+
+* geolocator（位置取得）
+* geocoding（逆ジオコーディング）
+
+※ geocodingは緯度経度から住所へ変換するためのFlutter標準的な手段
+（reverse geocoding） ([Medium][1])
+
+---
+
+## DB変更
+
+### テーブル: work_records
+
+以下のカラムを追加
+
+* rough_address TEXT
+* rough_address_status TEXT
+* rough_address_updated_at DATETIME
+
+---
+
+## ステータス定義
+
+* pending：取得待ち
+* success：取得成功
+* failed：取得失敗
+
+---
+
+## 実装内容
+
+### ① Repository層
+
+```dart
+Future<void> updateRoughAddress({
+  required int id,
+  required String address,
+}) async {
+  final db = await database;
+  await db.update(
+    'work_records',
+    {
+      'rough_address': address,
+      'rough_address_status': 'success',
+      'rough_address_updated_at': DateTime.now().toIso8601String(),
+    },
+    where: 'id = ?',
+    whereArgs: [id],
+  );
+}
+
+Future<void> updateAddressStatus({
+  required int id,
+  required String status,
+}) async {
+  final db = await database;
+  await db.update(
+    'work_records',
+    {
+      'rough_address_status': status,
+    },
+    where: 'id = ?',
+    whereArgs: [id],
+  );
+}
+```
+
+---
+
+### ② 住所取得サービス
+
+```dart
+import 'package:geocoding/geocoding.dart';
+
+Future<String?> getRoughAddress(double lat, double lng) async {
+  try {
+    final placemarks = await placemarkFromCoordinates(lat, lng);
+
+    if (placemarks.isEmpty) return null;
+
+    final p = placemarks.first;
+
+    final city = p.locality ?? p.subAdministrativeArea ?? '';
+    final subLocality = p.subLocality ?? '';
+
+    final result = '$city$subLocality';
+
+    if (result.isEmpty) return null;
+
+    return '$result付近';
+  } catch (e) {
+    return null;
+  }
+}
+```
+
+※ reverse geocoding = 座標 → 人間が読める住所 ([ウィキペディア][2])
+
+---
+
+### ③ 保存後トリガー
+
+```dart
+Future<void> enrichAddress(int id, double lat, double lng) async {
+  await repository.updateAddressStatus(id: id, status: 'pending');
+
+  final address = await getRoughAddress(lat, lng);
+
+  if (address != null) {
+    await repository.updateRoughAddress(id: id, address: address);
+  } else {
+    await repository.updateAddressStatus(id: id, status: 'failed');
+  }
+}
+```
+
+---
+
+### ④ クイック記録後に呼び出し
+
+```dart
+final id = await repository.insertWorkRecord(record);
+
+// 非同期で実行（awaitしない）
+unawaited(enrichAddress(id, lat, lng));
+```
+
+---
+
+### ⑤ UI表示
+
+```dart
+Widget buildAddress(String? address, String status) {
+  switch (status) {
+    case 'success':
+      return Text('位置: $address');
+    case 'pending':
+      return Text('位置: 住所取得中');
+    case 'failed':
+      return Text('位置: 住所未取得');
+    default:
+      return Text('位置: -');
+  }
+}
+```
+
+---
+
+## 注意点
+
+* API制限に注意（大量リクエストNG）
+* ネットワーク失敗時はfailedにする
+* 再試行は将来機能としてOK
+* 番地・建物名は表示しない（精度問題回避）
+
+---
+
+## 完了条件
+
+* 作業記録後に住所が自動補完される
+* 詳細画面に状態に応じた表示が出る
+* 保存速度が1秒以内を維持している
+
+---
+
+## やらないこと（今回）
+
+* Google APIキー導入
+* 高精度住所取得
+* Web版対応
+* 地図UIとの連携
+
+```
+---

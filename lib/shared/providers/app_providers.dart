@@ -10,11 +10,13 @@ import '../../features/master/domain/client.dart';
 import '../../features/master/domain/property.dart';
 import '../../features/monetize/data/subscription_repository.dart';
 import '../../features/monetize/domain/usage_summary.dart';
+import '../../features/work_log/data/address_service.dart';
 import '../../features/work_log/data/location_service.dart';
 import '../../features/work_log/data/work_log_repository.dart';
 import '../../features/work_log/domain/work_log_detail.dart';
 import '../../features/work_log/domain/work_log_filter.dart';
 import '../../features/work_log/domain/work_log_list_item.dart';
+import '../../features/work_log/domain/rough_address_status.dart';
 import '../../features/work_log/domain/work_log_status.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
@@ -37,6 +39,10 @@ final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
 
 final locationServiceProvider = Provider<LocationService>((ref) {
   return const LocationService();
+});
+
+final addressServiceProvider = Provider<AddressService>((ref) {
+  return const AddressService();
 });
 
 final workLogFilterProvider = StateProvider<WorkLogFilter>(
@@ -225,6 +231,13 @@ class WorkLogActions {
           );
           _invalidateLists();
           _ref.invalidate(workLogDetailProvider(workLogId));
+          unawaited(
+            _enrichAddressInBackground(
+              workLogId: workLogId,
+              latitude: position.latitude,
+              longitude: position.longitude,
+            ),
+          );
           return;
         }
 
@@ -234,6 +247,40 @@ class WorkLogActions {
       }
     } catch (_) {
       // GPS が取れなくても記録は失敗させない
+    }
+  }
+
+  Future<void> _enrichAddressInBackground({
+    required int workLogId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      await _workLogs.updateAddressStatus(
+        id: workLogId,
+        status: RoughAddressStatus.pending,
+      );
+      _ref.invalidate(workLogDetailProvider(workLogId));
+
+      final address = await _ref
+          .read(addressServiceProvider)
+          .getRoughAddress(latitude, longitude);
+
+      if (address != null) {
+        await _workLogs.updateRoughAddress(id: workLogId, address: address);
+      } else {
+        await _workLogs.updateAddressStatus(
+          id: workLogId,
+          status: RoughAddressStatus.failed,
+        );
+      }
+    } catch (_) {
+      await _workLogs.updateAddressStatus(
+        id: workLogId,
+        status: RoughAddressStatus.failed,
+      );
+    } finally {
+      _ref.invalidate(workLogDetailProvider(workLogId));
     }
   }
 

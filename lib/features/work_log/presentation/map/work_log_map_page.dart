@@ -12,7 +12,12 @@ import '../../domain/work_log_list_item.dart';
 import '../../domain/work_log_status.dart';
 
 class WorkLogMapPage extends ConsumerStatefulWidget {
-  const WorkLogMapPage({super.key});
+  const WorkLogMapPage({
+    super.key,
+    this.selectedWorkLogId,
+  });
+
+  final int? selectedWorkLogId;
 
   @override
   ConsumerState<WorkLogMapPage> createState() => _WorkLogMapPageState();
@@ -22,6 +27,8 @@ class _WorkLogMapPageState extends ConsumerState<WorkLogMapPage> {
   final MapController _mapController = MapController();
   WorkLogFilter _filter = WorkLogFilter.all;
   int? _selectedWorkLogId;
+  bool _didApplyInitialSelection = false;
+  bool _isMapReady = false;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +46,7 @@ class _WorkLogMapPageState extends ConsumerState<WorkLogMapPage> {
               final gpsItems = items
                   .where((item) => item.latitude != null && item.longitude != null)
                   .toList();
+              _applyInitialSelectionIfNeeded(gpsItems);
 
               return Stack(
                 children: <Widget>[
@@ -47,6 +55,10 @@ class _WorkLogMapPageState extends ConsumerState<WorkLogMapPage> {
                     options: MapOptions(
                       initialCenter: center,
                       initialZoom: 15,
+                      onMapReady: () {
+                        _isMapReady = true;
+                        _applyInitialSelectionIfNeeded(gpsItems);
+                      },
                       onTap: (tapPosition, point) {
                         if (_selectedWorkLogId != null) {
                           setState(() => _selectedWorkLogId = null);
@@ -273,6 +285,41 @@ class _WorkLogMapPageState extends ConsumerState<WorkLogMapPage> {
   void _selectFromList(WorkLogListItem item) {
     setState(() => _selectedWorkLogId = item.id);
     _mapController.move(LatLng(item.latitude!, item.longitude!), 17);
+  }
+
+  void _applyInitialSelectionIfNeeded(List<WorkLogListItem> items) {
+    if (_didApplyInitialSelection ||
+        !_isMapReady ||
+        widget.selectedWorkLogId == null) {
+      return;
+    }
+
+    final targetId = widget.selectedWorkLogId!;
+    WorkLogListItem? target;
+    for (final item in items) {
+      if (item.id == targetId) {
+        target = item;
+        break;
+      }
+    }
+    if (target == null) {
+      _didApplyInitialSelection = true;
+      return;
+    }
+    final initialTarget = target;
+
+    _didApplyInitialSelection = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) {
+        return;
+      }
+      setState(() => _selectedWorkLogId = initialTarget.id);
+      _mapController.move(
+        LatLng(initialTarget.latitude!, initialTarget.longitude!),
+        17,
+      );
+    });
   }
 }
 

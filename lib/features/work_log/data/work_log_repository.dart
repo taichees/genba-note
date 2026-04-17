@@ -4,6 +4,7 @@ import '../domain/work_log.dart';
 import '../domain/work_log_detail.dart';
 import '../domain/work_log_filter.dart';
 import '../domain/work_log_list_item.dart';
+import '../domain/rough_address_status.dart';
 import '../domain/work_log_status.dart';
 
 class WorkLogRepository {
@@ -118,6 +119,39 @@ class WorkLogRepository {
       },
       where: 'id = ?',
       whereArgs: <Object?>[workLogId],
+    );
+  }
+
+  Future<void> updateRoughAddress({
+    required int id,
+    required String address,
+  }) async {
+    final db = await _database;
+    await db.update(
+      'work_logs',
+      <String, Object?>{
+        'rough_address': address,
+        'rough_address_status': RoughAddressStatus.success.value,
+        'rough_address_updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+    );
+  }
+
+  Future<void> updateAddressStatus({
+    required int id,
+    required RoughAddressStatus status,
+  }) async {
+    final db = await _database;
+    await db.update(
+      'work_logs',
+      <String, Object?>{
+        'rough_address_status': status.value,
+        'rough_address_updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
     );
   }
 

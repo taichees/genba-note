@@ -19,7 +19,12 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/map',
-      builder: (context, state) => const WorkLogMapPage(),
+      builder: (context, state) {
+        final selectedWorkLogId = int.tryParse(
+          state.uri.queryParameters['workLogId'] ?? '',
+        );
+        return WorkLogMapPage(selectedWorkLogId: selectedWorkLogId);
+      },
     ),
   ],
 );
