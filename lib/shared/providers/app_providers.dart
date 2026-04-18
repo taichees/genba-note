@@ -8,7 +8,14 @@ import '../../core/db/app_database.dart';
 import '../../features/master/data/master_repository.dart';
 import '../../features/master/domain/client.dart';
 import '../../features/master/domain/property.dart';
-import '../../features/monetize/data/subscription_repository.dart';
+import '../../features/monetize/data/billing_service.dart';
+import '../../features/monetize/data/cloud_sync_service.dart';
+import '../../features/monetize/data/entitlement_repository.dart';
+import '../../features/monetize/data/in_app_purchase_billing_service.dart';
+import '../../features/monetize/data/paywall_controller.dart';
+import '../../features/monetize/domain/entitlement_state.dart';
+import '../../features/monetize/domain/feature_gate.dart';
+import '../../features/monetize/domain/subscription_plan.dart';
 import '../../features/monetize/domain/usage_summary.dart';
 import '../../features/work_log/data/address_service.dart';
 import '../../features/work_log/data/location_service.dart';
@@ -33,8 +40,37 @@ final masterRepositoryProvider = Provider<MasterRepository>((ref) {
   return MasterRepository(ref.watch(databaseConnectionProvider.future));
 });
 
-final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
-  return SubscriptionRepository(ref.watch(databaseConnectionProvider.future));
+final entitlementRepositoryProvider = Provider<EntitlementRepository>((ref) {
+  return EntitlementRepository(ref.watch(databaseConnectionProvider.future));
+});
+
+final billingServiceProvider = Provider<BillingService>((ref) {
+  return InAppPurchaseBillingService();
+});
+
+final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
+  return const PlaceholderCloudSyncService();
+});
+
+final paywallControllerProvider =
+    StateNotifierProvider<PaywallController, AsyncValue<PaywallState>>((ref) {
+      return PaywallController(
+        repository: ref.watch(entitlementRepositoryProvider),
+        billingService: ref.watch(billingServiceProvider),
+      );
+    });
+
+final entitlementStateProvider = Provider<EntitlementState>((ref) {
+  return ref.watch(paywallControllerProvider).valueOrNull?.entitlement ??
+      EntitlementState.empty;
+});
+
+final subscriptionPlanProvider = Provider<SubscriptionPlan>((ref) {
+  return ref.watch(entitlementStateProvider).plan;
+});
+
+final featureGateProvider = Provider<FeatureGate>((ref) {
+  return FeatureGate(ref.watch(subscriptionPlanProvider));
 });
 
 final locationServiceProvider = Provider<LocationService>((ref) {
@@ -75,6 +111,19 @@ final workLogDetailProvider = FutureProvider.family<WorkLogDetail?, int>((
   return repository.fetchWorkLogDetail(workLogId);
 });
 
+final workLogSearchProvider = FutureProvider.family<
+    List<WorkLogListItem>,
+    ({String query, bool fullAccess})>((ref, params) async {
+  if (params.query.trim().isEmpty) {
+    return const <WorkLogListItem>[];
+  }
+  final repository = ref.watch(workLogRepositoryProvider);
+  return repository.searchWorkLogs(
+    query: params.query,
+    fullAccess: params.fullAccess,
+  );
+});
+
 final clientsProvider = FutureProvider<List<Client>>((ref) async {
   return ref.watch(masterRepositoryProvider).fetchClients();
 });
@@ -83,22 +132,17 @@ final propertiesProvider = FutureProvider<List<Property>>((ref) async {
   return ref.watch(masterRepositoryProvider).fetchProperties();
 });
 
-final isPremiumProvider = FutureProvider<bool>((ref) async {
-  return ref.watch(subscriptionRepositoryProvider).fetchIsPremium();
-});
-
 final usageSummaryProvider = FutureProvider<UsageSummary>((ref) async {
   final workLogs = ref.watch(workLogRepositoryProvider);
-  final subscription = ref.watch(subscriptionRepositoryProvider);
 
   final totalCount = await workLogs.countAll();
   final unsortedCount = await workLogs.countByStatus(WorkLogStatus.unsorted);
-  final isPremium = await subscription.fetchIsPremium();
+  final plan = ref.watch(subscriptionPlanProvider);
 
   return UsageSummary(
     totalCount: totalCount,
     unsortedCount: unsortedCount,
-    isPremium: isPremium,
+    plan: plan,
   );
 });
 
@@ -123,8 +167,7 @@ class WorkLogActions {
 
   WorkLogRepository get _workLogs => _ref.read(workLogRepositoryProvider);
   MasterRepository get _masters => _ref.read(masterRepositoryProvider);
-  SubscriptionRepository get _subscription =>
-      _ref.read(subscriptionRepositoryProvider);
+  CloudSyncService get _cloudSync => _ref.read(cloudSyncServiceProvider);
 
   Future<void> prepareLocationPermission() async {
     try {
@@ -204,10 +247,9 @@ class WorkLogActions {
     _invalidateLists();
   }
 
-  Future<void> enablePremium() async {
-    await _subscription.setIsPremium(true);
-    _ref.invalidate(isPremiumProvider);
-    _ref.invalidate(usageSummaryProvider);
+  Future<void> setDebugPlan(SubscriptionPlan plan) async {
+    await _ref.read(paywallControllerProvider.notifier).setDebugPlan(plan);
+    _invalidateLists();
   }
 
   Future<int> deleteOldestWorkLogs({int count = 10}) async {
@@ -215,6 +257,10 @@ class WorkLogActions {
     _invalidateLists();
     _ref.invalidate(usageSummaryProvider);
     return deletedCount;
+  }
+
+  Future<String> cloudSyncStatusLabel() async {
+    return _cloudSync.currentStatusLabel();
   }
 
   Future<void> _updateLocationInBackground(int workLogId) async {

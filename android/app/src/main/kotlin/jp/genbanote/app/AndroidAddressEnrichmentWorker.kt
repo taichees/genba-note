@@ -1,7 +1,6 @@
 package jp.genbanote.app
 
 import android.content.Context
-import android.location.Location
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -23,49 +22,27 @@ class AndroidAddressEnrichmentWorker(
         }
 
         val repository = AndroidWorkLogRepository(applicationContext)
-        val notificationHelper = WidgetNotificationHelper(applicationContext)
-        val locationService = AndroidLocationService(applicationContext)
-        repository.updateAddressStatus(workLogId.toInt(), "pending")
+        val enricher = AndroidWidgetRecordEnricher(applicationContext)
 
         return try {
-            val location = when {
-                !cachedLatitude.isNaN() && !cachedLongitude.isNaN() ->
-                    AndroidLocationService(applicationContext).tryGetRecentCachedLocation()
-                        ?: toLocation(cachedLatitude, cachedLongitude)
-                else -> tryResolveLocation(locationService)
-            }
+            val result = enricher.enrich(
+                workLogId = workLogId.toInt(),
+                latitude = cachedLatitude.takeUnless { it.isNaN() },
+                longitude = cachedLongitude.takeUnless { it.isNaN() },
+                requireBackgroundPermission = true,
+            )
 
-            if (location == null) {
+            if (result is EnrichmentResult.MissingLocation) {
                 if (runAttemptCount < MAX_WORK_ATTEMPTS - 1) {
                     return Result.retry()
                 }
 
                 repository.updateAddressStatus(workLogId.toInt(), "failed")
-                notificationHelper.showRecordCompleted(withLocation = false)
                 return Result.success()
             }
-
-            repository.updateLocation(
-                id = workLogId.toInt(),
-                latitude = location.latitude,
-                longitude = location.longitude,
-            )
-
-            val address = AndroidAddressService(applicationContext).getRoughAddress(
-                latitude = location.latitude,
-                longitude = location.longitude,
-            )
-
-            if (address != null) {
-                repository.updateRoughAddress(workLogId.toInt(), address)
-            } else {
-                repository.updateAddressStatus(workLogId.toInt(), "failed")
-            }
-            notificationHelper.showRecordCompleted(withLocation = true)
             Result.success()
         } catch (_: Exception) {
             repository.updateAddressStatus(workLogId.toInt(), "failed")
-            notificationHelper.showRecordCompleted(withLocation = false)
             Result.failure()
         }
     }
@@ -102,33 +79,7 @@ class AndroidAddressEnrichmentWorker(
             )
         }
 
-        private fun tryResolveLocation(locationService: AndroidLocationService): Location? {
-            repeat(INLINE_LOCATION_ATTEMPTS) {
-                val freshLocation = locationService.tryGetFreshLocation()
-                if (freshLocation != null) {
-                    return freshLocation
-                }
-                Thread.sleep(INLINE_RETRY_INTERVAL_MILLIS)
-            }
-
-            val cachedLocation = locationService.tryGetRecentCachedLocation()
-            if (cachedLocation != null) {
-                return cachedLocation
-            }
-
-            return null
-        }
-
-        private fun toLocation(latitude: Double, longitude: Double): Location {
-            return Location("cached").apply {
-                this.latitude = latitude
-                this.longitude = longitude
-            }
-        }
-
-        private const val INLINE_LOCATION_ATTEMPTS = 4
-        private const val INLINE_RETRY_INTERVAL_MILLIS = 2_000L
-        private const val MAX_WORK_ATTEMPTS = 3
-        private const val RETRY_BACKOFF_SECONDS = 10L
+        private const val MAX_WORK_ATTEMPTS = 4
+        private const val RETRY_BACKOFF_SECONDS = 15L
     }
 }

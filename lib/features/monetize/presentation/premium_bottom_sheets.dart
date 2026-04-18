@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-Future<bool?> showPremiumOfferSheet(BuildContext context) {
-  return showModalBottomSheet<bool>(
+Future<void> showUpgradePrompt(
+  BuildContext context, {
+  required String reason,
+  bool canDeleteOldRecords = false,
+}) {
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (context) {
@@ -17,28 +22,32 @@ Future<bool?> showPremiumOfferSheet(BuildContext context) {
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 12),
+              Text(reason),
+              const SizedBox(height: 12),
               const Text('データ無制限'),
               const Text('クラウド保存'),
               const Text('機種変更OK'),
               const Text('PC対応'),
               const SizedBox(height: 20),
-              Text(
-                '月額500円',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 20),
+              if (canDeleteOldRecords) ...const <Widget>[
+                Text('無料プランでは 50 件まで保存できます。'),
+                SizedBox(height: 20),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('今すぐ使う'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    context.push('/paywall', extra: reason);
+                  },
+                  child: const Text('プランを見る'),
                 ),
               ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('あとで'),
                 ),
               ),
@@ -50,51 +59,8 @@ Future<bool?> showPremiumOfferSheet(BuildContext context) {
   );
 }
 
-Future<String?> showRecordLimitSheet(BuildContext context) {
-  return showModalBottomSheet<String>(
-    context: context,
-    builder: (context) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                '記録がいっぱいです',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              const Text('古いデータを削除するか、無制限にしますか？'),
-              const SizedBox(height: 20),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop('delete'),
-                      child: const Text('削除する'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop('premium'),
-                      child: const Text('有料にする'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-Future<bool?> showPcPromoSheet(BuildContext context) {
-  return showModalBottomSheet<bool>(
+Future<void> showPcPromoSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
     context: context,
     builder: (context) {
       return SafeArea(
@@ -114,15 +80,18 @@ Future<bool?> showPcPromoSheet(BuildContext context) {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    context.push('/paywall', extra: 'PCでまとめて整理できるのは500円プランです。');
+                  },
                   child: const Text('有料機能を見る'),
                 ),
               ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('閉じる'),
                 ),
               ),
@@ -134,8 +103,8 @@ Future<bool?> showPcPromoSheet(BuildContext context) {
   );
 }
 
-Future<bool?> showCloudPromoSheet(BuildContext context) {
-  return showModalBottomSheet<bool>(
+Future<void> showCloudPromoSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
     context: context,
     builder: (context) {
       return SafeArea(
@@ -155,7 +124,10 @@ Future<bool?> showCloudPromoSheet(BuildContext context) {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    context.push('/paywall', extra: '機種変更やクラウド保存は500円プランで使えます。');
+                  },
                   child: const Text('有料機能を見る'),
                 ),
               ),
@@ -163,7 +135,7 @@ Future<bool?> showCloudPromoSheet(BuildContext context) {
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('閉じる'),
                 ),
               ),

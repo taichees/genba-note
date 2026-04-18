@@ -20,14 +20,15 @@ class AndroidWorkLogRepository(context: Context) {
         return 0
     }
 
-    fun isPremium(): Boolean {
+    fun hasPaidPlan(): Boolean {
         val db = dbHelper.readableDatabase
         db.rawQuery(
             "SELECT value FROM app_settings WHERE key = ? LIMIT 1",
-            arrayOf("is_premium"),
+            arrayOf("subscription_plan"),
         ).use { cursor ->
             if (cursor.moveToFirst()) {
-                return cursor.getString(0) == "true"
+                val value = cursor.getString(0)
+                return value == "local" || value == "cloud"
             }
         }
         return false
@@ -93,6 +94,43 @@ class AndroidWorkLogRepository(context: Context) {
         }
         db.update("work_logs", values, "id = ?", arrayOf(id.toString()))
     }
+
+    fun getWidgetRecordProgress(id: Int): WidgetRecordProgress? {
+        val db = dbHelper.readableDatabase
+        db.rawQuery(
+            """
+            SELECT latitude, longitude, rough_address_status, rough_address
+            FROM work_logs
+            WHERE id = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(id.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return null
+            }
+
+            return WidgetRecordProgress(
+                latitude = cursor.getNullableDouble(0),
+                longitude = cursor.getNullableDouble(1),
+                addressStatus = cursor.getString(2),
+                roughAddress = cursor.getString(3),
+            )
+        }
+    }
+}
+
+data class WidgetRecordProgress(
+    val latitude: Double?,
+    val longitude: Double?,
+    val addressStatus: String?,
+    val roughAddress: String?,
+) {
+    val hasLocation: Boolean
+        get() = latitude != null && longitude != null
+
+    val isFinished: Boolean
+        get() = addressStatus == "success" || addressStatus == "failed"
 }
 
 private class GenbaNoteDatabaseHelper(context: Context) : SQLiteOpenHelper(
@@ -191,3 +229,10 @@ private class GenbaNoteDatabaseHelper(context: Context) : SQLiteOpenHelper(
 
 private val DATE_TIME_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS")
+
+private fun android.database.Cursor.getNullableDouble(index: Int): Double? {
+    if (isNull(index)) {
+        return null
+    }
+    return getDouble(index)
+}

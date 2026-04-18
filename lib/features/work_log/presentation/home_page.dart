@@ -9,6 +9,7 @@ import '../../../core/utils/system_channels.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../master/domain/client.dart';
 import '../../master/domain/property.dart';
+import '../../monetize/domain/subscription_plan.dart';
 import '../../monetize/presentation/premium_bottom_sheets.dart';
 import '../domain/work_log_filter.dart';
 import '../domain/work_log_status.dart';
@@ -36,6 +37,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _tabController.addListener(_handleTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(workLogActionsProvider).prepareLocationPermission();
+      AppSystemChannels.requestBackgroundLocationPermissionIfNeeded();
       AppSystemChannels.requestNotificationPermissionIfNeeded();
       _checkUsagePrompts();
     });
@@ -74,13 +76,13 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     final listState = ref.watch(workLogListProvider);
-    final usageSummary = ref.watch(usageSummaryProvider).valueOrNull;
+    final plan = ref.watch(subscriptionPlanProvider);
+    final gate = ref.watch(featureGateProvider);
     final selectedIds = ref.watch(selectedWorkLogIdsProvider);
     final clients = ref.watch(clientsProvider).valueOrNull ?? const <Client>[];
     final properties =
         ref.watch(propertiesProvider).valueOrNull ?? const <Property>[];
     final selectionMode = _tabController.index == 1 && selectedIds.isNotEmpty;
-    final isPremium = usageSummary?.isPremium ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -91,18 +93,28 @@ class _HomePageState extends ConsumerState<HomePage>
                   tooltip: '請求先を設定',
                   onPressed: _isApplyingBulk
                       ? null
-                      : () => _applyClientBulk(context, clients, selectedIds.toList()),
+                      : () => _ensureBulkAccess(
+                            context,
+                            onAllowed: () => _applyClientBulk(
+                              context,
+                              clients,
+                              selectedIds.toList(),
+                            ),
+                          ),
                   icon: const Icon(Icons.receipt_long),
                 ),
                 IconButton(
                   tooltip: '物件を設定',
                   onPressed: _isApplyingBulk
                       ? null
-                      : () => _applyPropertyBulk(
+                      : () => _ensureBulkAccess(
                             context,
-                            properties,
-                            clients,
-                            selectedIds.toList(),
+                            onAllowed: () => _applyPropertyBulk(
+                              context,
+                              properties,
+                              clients,
+                              selectedIds.toList(),
+                            ),
                           ),
                   icon: const Icon(Icons.home_work_outlined),
                 ),
@@ -110,27 +122,52 @@ class _HomePageState extends ConsumerState<HomePage>
                   tooltip: '完了にする',
                   onPressed: _isApplyingBulk
                       ? null
-                      : () => _markSelectedCompleted(selectedIds.toList()),
+                      : () => _ensureBulkAccess(
+                            context,
+                            onAllowed: () =>
+                                _markSelectedCompleted(selectedIds.toList()),
+                          ),
                   icon: const Icon(Icons.done_all),
                 ),
               ]
             : <Widget>[
+                IconButton(
+                  tooltip: gate.canUseFullSearch ? 'フル検索' : '簡易検索',
+                  onPressed: () => context.push('/search'),
+                  icon: const Icon(Icons.search),
+                ),
                 IconButton(
                   tooltip: '引き継ぎ',
                   onPressed: () => _showCloudPromo(context),
                   icon: const Icon(Icons.cloud_outlined),
                 ),
                 IconButton(
-                  tooltip: isPremium ? 'プレミアム利用中' : '有料プラン',
-                  onPressed: () => _showPremiumOffer(context),
+                  tooltip: '${plan.label} / プランを見る',
+                  onPressed: () => context.push('/paywall'),
                   icon: Icon(
-                    isPremium ? Icons.workspace_premium : Icons.workspace_premium_outlined,
+                    plan == SubscriptionPlan.free
+                        ? Icons.workspace_premium_outlined
+                        : Icons.workspace_premium,
                   ),
                 ),
                 IconButton(
-                  tooltip: '地図を見る',
-                  onPressed: () => context.push('/map'),
+                  tooltip: gate.canUseFullHistoryMap ? '地図を見る' : '地図全履歴は500円プラン',
+                  onPressed: () {
+                    if (!gate.canUseFullHistoryMap) {
+                      showUpgradePrompt(
+                        context,
+                        reason: '地図全履歴は500円プランで利用できます。',
+                      );
+                      return;
+                    }
+                    context.push('/map');
+                  },
                   icon: const Icon(Icons.map_outlined),
+                ),
+                IconButton(
+                  tooltip: '設定',
+                  onPressed: () => context.push('/settings'),
+                  icon: const Icon(Icons.settings_outlined),
                 ),
               ],
         bottom: TabBar(
@@ -191,10 +228,7 @@ class _HomePageState extends ConsumerState<HomePage>
     }
 
     _didShowPcPromo = true;
-    final wantsPremium = await showPcPromoSheet(context);
-    if (wantsPremium == true && mounted) {
-      await _showPremiumOffer(context);
-    }
+    await showPcPromoSheet(context);
   }
 
   void _refreshHomeData() {
@@ -205,6 +239,14 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   void _toggleSelection(int id) {
+    final gate = ref.read(featureGateProvider);
+    if (!gate.canUseBulkEdit) {
+      showUpgradePrompt(
+        context,
+        reason: '一括編集は500円プランで利用できます。',
+      );
+      return;
+    }
     final current = ref.read(selectedWorkLogIdsProvider);
     final next = <int>{...current};
     if (next.contains(id)) {
@@ -243,51 +285,15 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   Future<void> _showRecordLimitPrompt(BuildContext context) async {
-    final action = await showRecordLimitSheet(context);
-    if (!context.mounted || action == null) {
-      return;
-    }
-
-    if (action == 'delete') {
-      final deletedCount = await ref
-          .read(workLogActionsProvider)
-          .deleteOldestWorkLogs();
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('$deletedCount件の古い記録を削除しました')),
-        );
-      return;
-    }
-
-    await _showPremiumOffer(context);
-  }
-
-  Future<void> _showPremiumOffer(BuildContext context) async {
-    final shouldUpgrade = await showPremiumOfferSheet(context);
-    if (shouldUpgrade != true || !context.mounted) {
-      return;
-    }
-
-    await ref.read(workLogActionsProvider).enablePremium();
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('プレミアムを有効にしました')),
-      );
+    await showUpgradePrompt(
+      context,
+      reason: '51件目以降を保存するには100円プラン以上が必要です。',
+      canDeleteOldRecords: true,
+    );
   }
 
   Future<void> _showCloudPromo(BuildContext context) async {
-    final wantsPremium = await showCloudPromoSheet(context);
-    if (wantsPremium == true && context.mounted) {
-      await _showPremiumOffer(context);
-    }
+    await showCloudPromoSheet(context);
   }
 
   Future<void> _applyClientBulk(
@@ -346,6 +352,21 @@ class _HomePageState extends ConsumerState<HomePage>
     await ref.read(workLogActionsProvider).markSelectedCompleted(ids);
     ref.read(selectedWorkLogIdsProvider.notifier).state = <int>{};
     setState(() => _isApplyingBulk = false);
+  }
+
+  Future<void> _ensureBulkAccess(
+    BuildContext context, {
+    required Future<void> Function() onAllowed,
+  }) async {
+    final gate = ref.read(featureGateProvider);
+    if (!gate.canUseBulkEdit) {
+      await showUpgradePrompt(
+        context,
+        reason: '一括編集は500円プランで利用できます。',
+      );
+      return;
+    }
+    await onAllowed();
   }
 }
 

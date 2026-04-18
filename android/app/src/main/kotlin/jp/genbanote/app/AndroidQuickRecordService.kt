@@ -10,10 +10,10 @@ class AndroidQuickRecordService(private val appContext: Context) {
     fun createQuickRecord(): QuickRecordResult {
         return try {
             Log.d(TAG, "Attempting quick record from widget")
-            if (!repository.isPremium() && repository.countWorkLogs() >= FREE_LIMIT) {
+            if (!repository.hasPaidPlan() && repository.countWorkLogs() >= FREE_LIMIT) {
                 QuickRecordResult.FreeLimitReached
             } else {
-                val cachedLocation = locationService.tryGetRecentCachedLocation()
+                val cachedLocation = locationService.tryGetBestEffortCachedLocation()
                 Log.d(
                     TAG,
                     "Widget cached location lat=${cachedLocation?.latitude} lon=${cachedLocation?.longitude}",
@@ -29,7 +29,7 @@ class AndroidQuickRecordService(private val appContext: Context) {
                     latitude = cachedLocation?.latitude,
                     longitude = cachedLocation?.longitude,
                 )
-                QuickRecordResult.Success
+                QuickRecordResult.Success(workLogId)
             }
         } catch (error: Exception) {
             Log.e(TAG, "Failed to create widget quick record", error)
@@ -43,8 +43,8 @@ class AndroidQuickRecordService(private val appContext: Context) {
     }
 }
 
-enum class QuickRecordResult {
-    Success,
-    FreeLimitReached,
-    Failure,
+sealed interface QuickRecordResult {
+    data class Success(val workLogId: Int) : QuickRecordResult
+    data object FreeLimitReached : QuickRecordResult
+    data object Failure : QuickRecordResult
 }

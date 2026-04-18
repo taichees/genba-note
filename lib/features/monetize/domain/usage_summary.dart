@@ -1,14 +1,20 @@
+import 'feature_gate.dart';
+import 'subscription_plan.dart';
+
 class UsageSummary {
   const UsageSummary({
     required this.totalCount,
     required this.unsortedCount,
-    required this.isPremium,
+    required this.plan,
   });
 
   final int totalCount;
   final int unsortedCount;
-  final bool isPremium;
+  final SubscriptionPlan plan;
 
-  bool get reachedFreeLimit => !isPremium && totalCount >= 50;
-  bool get shouldSuggestPc => !isPremium && unsortedCount >= 20;
+  FeatureGate get gate => FeatureGate(plan);
+
+  bool get reachedFreeLimit => plan == SubscriptionPlan.free && totalCount >= 50;
+  bool get shouldSuggestPc => plan == SubscriptionPlan.free && unsortedCount >= 20;
+  bool get shouldPromptSearchUpgrade => !gate.canUseFullSearch;
 }

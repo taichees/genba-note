@@ -62,6 +62,54 @@ class WorkLogRepository {
     );
   }
 
+  Future<List<WorkLogListItem>> searchWorkLogs({
+    required String query,
+    required bool fullAccess,
+  }) async {
+    final db = await _database;
+    final keyword = '%${query.trim()}%';
+    final additionalColumns = fullAccess
+        ? '''
+          wl.memo,
+          wl.rough_address,
+        '''
+        : '';
+    final additionalWhere = fullAccess
+        ? '''
+          OR wl.memo LIKE ?
+          OR wl.rough_address LIKE ?
+        '''
+        : '';
+    final args = <Object?>[
+      keyword,
+      keyword,
+      if (fullAccess) ...<Object?>[keyword, keyword],
+    ];
+
+    final rows = await db.rawQuery('''
+      SELECT
+        wl.id,
+        wl.datetime,
+        wl.status,
+        wl.latitude,
+        wl.longitude,
+        wl.property_id,
+        wl.client_id,
+        p.name AS property_name,
+        c.name AS client_name
+        ${additionalColumns.isEmpty ? '' : ', $additionalColumns'}
+      FROM work_logs wl
+      LEFT JOIN properties p ON p.id = wl.property_id
+      LEFT JOIN clients c ON c.id = wl.client_id
+      WHERE
+        p.name LIKE ?
+        OR c.name LIKE ?
+        $additionalWhere
+      ORDER BY wl.datetime DESC, wl.id DESC
+    ''', args);
+    return rows.map(WorkLogListItem.fromMap).toList();
+  }
+
   Future<int> quickRecord() async {
     final db = await _database;
     return db.insert('work_logs', <String, Object?>{

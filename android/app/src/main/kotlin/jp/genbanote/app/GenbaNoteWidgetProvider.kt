@@ -37,12 +37,10 @@ class GenbaNoteWidgetProvider : AppWidgetProvider() {
         EXECUTOR.execute {
             try {
                 val quickRecordService = AndroidQuickRecordService(context.applicationContext)
-                val notificationHelper = WidgetNotificationHelper(context.applicationContext)
-                when (quickRecordService.createQuickRecord()) {
-                    QuickRecordResult.Success -> {
+                when (val quickRecordResult = quickRecordService.createQuickRecord()) {
+                    is QuickRecordResult.Success -> {
                         Log.d(TAG, "Quick record saved from widget")
-                        showToast(context, context.getString(R.string.widget_record_started))
-                        notificationHelper.showRecordStarted()
+                        launchProgressScreen(context, quickRecordResult.workLogId)
                     }
                     QuickRecordResult.FreeLimitReached -> {
                         Log.d(TAG, "Quick record blocked by free limit")
@@ -110,6 +108,18 @@ class GenbaNoteWidgetProvider : AppWidgetProvider() {
             }
 
             context.startActivity(launchIntent)
+        }
+
+        private fun launchProgressScreen(context: Context, workLogId: Int) {
+            val progressIntent = Intent(context, WidgetRecordProgressActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                putExtra(WidgetRecordProgressActivity.EXTRA_WORK_LOG_ID, workLogId)
+            }
+            context.startActivity(progressIntent)
         }
     }
 }

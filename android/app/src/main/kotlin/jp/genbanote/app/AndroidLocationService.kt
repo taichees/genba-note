@@ -1,20 +1,24 @@
 package jp.genbanote.app
 
 import android.Manifest
-import android.os.Build
 import android.os.CancellationSignal
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class AndroidLocationService(private val context: Context) {
-    fun tryGetFreshLocation(): Location? {
-        if (!hasLocationPermission()) {
+    fun tryGetFreshLocation(requireBackground: Boolean = true): Location? {
+        if (!hasLocationPermission(requireBackground = requireBackground)) {
             return null
         }
 
@@ -24,22 +28,96 @@ class AndroidLocationService(private val context: Context) {
             return null
         }
 
-        val currentLocation = tryGetCurrentLocation(locationManager)
+        val currentLocation = tryGetFusedCurrentLocation() ?: tryGetCurrentLocation(locationManager)
         if (currentLocation != null) {
+            Log.d(TAG, "Resolved fresh widget location from active provider")
             return currentLocation
         }
 
-        return tryGetRecentLastKnownLocation(locationManager)
+        return tryGetBestEffortCachedLocation(requireBackground = requireBackground)
     }
 
-    fun tryGetRecentCachedLocation(): Location? {
-        if (!hasLocationPermission()) {
+    fun tryGetRecentCachedLocation(requireBackground: Boolean = true): Location? {
+        if (!hasLocationPermission(requireBackground = requireBackground)) {
             return null
         }
 
         val locationManager =
             context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         return tryGetRecentLastKnownLocation(locationManager)
+    }
+
+    fun tryGetBestEffortCachedLocation(requireBackground: Boolean = true): Location? {
+        if (!hasLocationPermission(requireBackground = requireBackground)) {
+            return null
+        }
+
+        val locationManager =
+            context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+
+        val fusedLocation = tryGetFusedLastLocation()
+        if (fusedLocation != null) {
+            Log.d(TAG, "Resolved widget location from fused cache")
+            return fusedLocation
+        }
+
+        return tryGetRecentLastKnownLocation(locationManager)
+    }
+
+    private fun tryGetFusedCurrentLocation(): Location? {
+        val latch = CountDownLatch(1)
+        val cancellationTokenSource = CancellationTokenSource()
+        var location: Location? = null
+
+        try {
+            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+            fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                cancellationTokenSource.token,
+            ).addOnSuccessListener { currentLocation ->
+                location = currentLocation
+                latch.countDown()
+            }.addOnFailureListener {
+                latch.countDown()
+            }
+
+            latch.await(CURRENT_LOCATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+            return null
+        } finally {
+            cancellationTokenSource.cancel()
+        }
+
+        return location
+    }
+
+    private fun tryGetFusedLastLocation(): Location? {
+        val latch = CountDownLatch(1)
+        var location: Location? = null
+
+        try {
+            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { lastLocation ->
+                    location = lastLocation
+                    latch.countDown()
+                }
+                .addOnFailureListener {
+                    latch.countDown()
+                }
+
+            latch.await(LAST_LOCATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+            return null
+        }
+
+        val lastLocation = location ?: return null
+        val ageMillis = System.currentTimeMillis() - lastLocation.time
+        return if (ageMillis <= LAST_KNOWN_MAX_AGE_MILLIS) {
+            lastLocation
+        } else {
+            null
+        }
     }
 
     private fun tryGetCurrentLocation(locationManager: LocationManager): Location? {
@@ -145,7 +223,7 @@ class AndroidLocationService(private val context: Context) {
         }
     }
 
-    private fun hasLocationPermission(): Boolean {
+    private fun hasLocationPermission(requireBackground: Boolean): Boolean {
         val fine = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -154,11 +232,24 @@ class AndroidLocationService(private val context: Context) {
             context,
             Manifest.permission.ACCESS_COARSE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
-        return fine || coarse
+        if (!fine && !coarse) {
+            return false
+        }
+
+        if (!requireBackground || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return true
+        }
+
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     companion object {
-        private const val CURRENT_LOCATION_TIMEOUT_MILLIS = 2_500L
-        private const val LAST_KNOWN_MAX_AGE_MILLIS = 10 * 60 * 1_000L
+        private const val TAG = "AndroidLocationService"
+        private const val CURRENT_LOCATION_TIMEOUT_MILLIS = 8_000L
+        private const val LAST_LOCATION_TIMEOUT_MILLIS = 1_500L
+        private const val LAST_KNOWN_MAX_AGE_MILLIS = 15 * 60 * 1_000L
     }
 }

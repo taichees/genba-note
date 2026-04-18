@@ -12,4 +12,8 @@
     <string name="widget_notification_completed_without_location">記録が完了しました（位置情報なし）</string>
     <string name="widget_notification_channel_name">クイック記録</string>
     <string name="widget_notification_channel_description">ウィジェットからの記録結果を表示します</string>
+    <string name="widget_progress_title">現場ノート</string>
+    <string name="widget_progress_getting_location">位置情報取得中</string>
+    <string name="widget_progress_resolving_address">住所を補完しています</string>
+    <string name="widget_progress_timed_out">位置情報の取得に時間がかかっています</string>
 </resources>
