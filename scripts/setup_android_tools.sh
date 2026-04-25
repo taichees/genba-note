@@ -31,6 +31,13 @@ fail() {
   exit 1
 }
 
+# Flutter / cmdline / JDK の既定 URL はすべて macOS 向け。Windows や Linux で実行すると
+# 展開後の dart 等が動かず Error 9009 や symlink error になる。
+UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
+if [[ "$UNAME_S" != "Darwin" ]]; then
+  fail "このスクリプトは macOS 専用です (検出: ${UNAME_S})。OS 用の SDK は https://docs.flutter.dev/get-started/install から導入してください。誤って入れた .tool/ はフォルダごと削除して構いません。"
+fi
+
 need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "必要なコマンドが見つかりません: $1"
 }

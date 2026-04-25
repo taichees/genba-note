@@ -52,15 +52,27 @@ lib/
 
 最初にセットアップスクリプトでローカル開発環境を作成します。
 
+**macOS**
+
 ```bash
 ./scripts/setup_android_tools.sh
 ```
 
-その後、実行スクリプトでアプリを起動します。
+**Windows (PowerShell)**
+
+```powershell
+.\scripts\setup_android_tools.ps1
+```
+
+（`ExecutionPolicy` で弾かれる場合は、例: `powershell -ExecutionPolicy Bypass -File .\scripts\setup_android_tools.ps1`）
+
+**macOS（続き）** — 実行スクリプトでアプリを起動します。
 
 ```bash
 ./scripts/run_android.sh
 ```
+
+**Windows** — `run_android.sh` は mac 前提のため、セットアップ完了メッセージのとおり `JAVA_HOME` / `ANDROID_SDK_ROOT` / `ANDROID_AVD_HOME` / `Path` を設定し、エミュレータ起動後にプロジェクト直下で `flutter run` するか、WSL 上で上記 `run_android.sh` を使います。
 
 ソース更新後に、起動中のエミュレータへ最新ビルドだけを入れ直したい場合は次を使います。
 
